@@ -1,26 +1,16 @@
-/**
- * OpenCoder Telegram Remote Plugin
- * https://github.com/YOUR_USERNAME/opencoder-telegram-remote-plugin
- */
+// src/telegram-remote.ts
+import { Plugin } from "@opencode/plugin";
 
 // src/bot.ts
 import { Bot } from "grammy";
-var botInstance = null;
 function isUserAllowed(ctx, allowedUserIds) {
   const userId = ctx.from?.id;
   if (!userId) return false;
   return allowedUserIds.includes(userId);
 }
-function createTelegramBot(config, client, sessionTitleService) {
+function createTelegramBot(config, sessionTitleService) {
   console.log("[Bot] createTelegramBot called");
-  if (botInstance) {
-    console.log("[Bot] Reusing existing bot instance");
-    return createBotManager(botInstance, sessionTitleService);
-  }
-  console.log("[Bot] Creating new Bot instance with token");
   const bot = new Bot(config.botToken);
-  botInstance = bot;
-  console.log("[Bot] Bot instance created");
   console.log("[Bot] Setting up middleware and handlers...");
   bot.use(async (ctx, next) => {
     if (!isUserAllowed(ctx, config.allowedUserIds)) {
@@ -88,7 +78,6 @@ function createBotManager(bot, sessionTitleService) {
     async stop() {
       console.log("[Bot] stop() called");
       await bot.stop();
-      botInstance = null;
       console.log("[Bot] Bot stopped and instance cleared");
     },
     async sendMessage(text, options) {
@@ -156,73 +145,6 @@ function loadConfig() {
   };
 }
 
-// src/events/session-status.ts
-async function handleSessionStatus(event, context) {
-  const statusType = event?.properties?.status?.type;
-  if (statusType) {
-    if (statusType === "idle") {
-      console.log(`[TelegramRemote] Session is idle. Sending finished notification.`);
-      try {
-        const sessionId = event?.properties?.info?.id ?? event?.properties?.sessionID ?? event?.properties?.id;
-        console.log("[TelegramRemote] Extracted sessionId for idle event:", sessionId);
-        console.log("[TelegramRemote] Event structure:", JSON.stringify(event?.properties, null, 2));
-        let message = "Agent has finished.";
-        if (sessionId && context.sessionTitleService) {
-          const title = context.sessionTitleService.getSessionTitle(sessionId);
-          console.log("[TelegramRemote] Retrieved title from service:", title);
-          if (title) {
-            message = `Agent has finished: ${title}`;
-          }
-        } else {
-          console.log("[TelegramRemote] SessionId or sessionTitleService missing:", {
-            hasSessionId: !!sessionId,
-            hasService: !!context.sessionTitleService
-          });
-        }
-        await context.bot.sendMessage(message);
-      } catch (error) {
-        console.error("[TelegramRemote] Failed to send idle notification:");
-      }
-    }
-  }
-}
-
-// src/events/session-updated.ts
-async function handleSessionUpdated(event, context) {
-  const title = event?.properties?.info?.title;
-  const sessionId = event?.properties?.info?.id ?? event?.properties?.sessionID ?? event?.properties?.id;
-  if (title && context.sessionTitleService) {
-    if (typeof sessionId === "string" && sessionId.trim()) {
-      context.sessionTitleService.setSessionTitle(sessionId, title);
-    }
-  }
-}
-
-// src/events/question-asked.ts
-async function handleQuestionAsked(event, context) {
-  console.log("[TelegramRemote] handleQuestionAsked called with event:", JSON.stringify(event, null, 2));
-  const sessionID = event?.properties?.sessionID;
-  const questions = event?.properties?.questions;
-  if (sessionID && questions && Array.isArray(questions) && questions.length > 0 && context.bot) {
-    const sessionTitle = context.sessionTitleService.getSessionTitle(sessionID);
-    const titleText = sessionTitle ? `\u{1F4CB} ${sessionTitle}` : `Session: ${sessionID}`;
-    const questionTexts = questions.map((q, index) => {
-      const header = q.header ? `${q.header}: ` : "";
-      return `${index + 1}. ${header}${q.question}`;
-    }).join("\n");
-    const message = `${titleText}
-
-\u2753 Questions:
-${questionTexts}`;
-    console.log(`[TelegramRemote] Sending questions for session ${sessionID}`);
-    try {
-      await context.bot.sendMessage(message);
-    } catch (error) {
-      console.error("[TelegramRemote] Failed to send question notification:", error);
-    }
-  }
-}
-
 // src/services/session-title-service.ts
 var SessionTitleService = class {
   sessionTitles = /* @__PURE__ */ new Map();
@@ -244,88 +166,76 @@ var SessionTitleService = class {
   }
 };
 
-// src/telegram-remote.ts
-var TelegramRemote = async ({ client }) => {
-  console.log("[TelegramRemote] Plugin initialization started");
-  let config;
+// src/v2-events.ts
+async function handleEvent(event, context, getTitle) {
+  if (event.type === "session.created" || event.type === "session.renamed") {
+    const data2 = event.data;
+    if (data2.title) context.sessionTitleService.setSessionTitle(data2.sessionID, data2.title);
+    return;
+  }
+  if (event.type !== "session.idle" && event.type !== "form.created") return;
+  const data = event.data;
+  const sessionID = event.type === "form.created" ? data.form?.sessionID : data.sessionID;
+  if (!sessionID) return;
+  let title = context.sessionTitleService.getSessionTitle(sessionID);
+  if (!title) {
+    try {
+      title = await getTitle(sessionID) ?? null;
+      if (title) context.sessionTitleService.setSessionTitle(sessionID, title);
+    } catch (error) {
+      console.warn("[TelegramRemote] Could not retrieve session title:", error);
+    }
+  }
+  let message = title ? `Agent has finished: ${title}` : "Agent has finished.";
+  if (event.type === "form.created" && data.form) {
+    const fields = data.form.fields.filter((field) => !field.hidden).map((field, index) => `${index + 1}. ${field.title || field.description || field.key}`).join("\n");
+    message = `${title ? `\u{1F4CB} ${title}` : `Session: ${sessionID}`}
+
+\u2753 ${data.form.title}
+${fields}`;
+  }
   try {
-    console.log("[TelegramRemote] Loading configuration...");
-    config = loadConfig();
-    console.log("[TelegramRemote] Configuration loaded successfully");
+    await context.bot.sendMessage(message);
   } catch (error) {
-    console.error("[TelegramRemote] Configuration error:", error);
-    return {
-      event: async () => {
+    console.error("[TelegramRemote] Failed to send notification:", error);
+  }
+}
+
+// src/telegram-remote.ts
+var telegram_remote_default = Plugin.define({
+  id: "telegram-remote",
+  setup(ctx) {
+    let config;
+    try {
+      config = loadConfig();
+    } catch (error) {
+      console.error("[TelegramRemote] Configuration error:", error);
+      return;
+    }
+    const titles = new SessionTitleService();
+    if (config.chatId) titles.setActiveChatId(config.chatId);
+    const bot = createTelegramBot(config, titles);
+    const controller = new AbortController();
+    void bot.start().catch((error) => console.error("[TelegramRemote] Bot polling failed:", error));
+    void (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+          await handleEvent(event, { bot, sessionTitleService: titles }, async (sessionID) => {
+            const session = await ctx.session.get({ sessionID });
+            return session.title;
+          });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted)
+          console.error("[TelegramRemote] Event subscription failed:", error);
       }
+    })();
+    return async () => {
+      controller.abort();
+      await bot.stop();
     };
   }
-  console.log("[TelegramRemote] Creating session title service...");
-  const sessionTitleService = new SessionTitleService();
-  if (config.chatId) {
-    console.log(`[TelegramRemote] Setting active chat_id from config: ${config.chatId}`);
-    sessionTitleService.setActiveChatId(config.chatId);
-  }
-  console.log("[TelegramRemote] Creating Telegram bot...");
-  const bot = createTelegramBot(config, client, sessionTitleService);
-  console.log("[TelegramRemote] Bot created successfully");
-  console.log("[TelegramRemote] Starting Telegram bot polling...");
-  bot.start().catch((error) => {
-    console.error("[TelegramRemote] Failed to start bot:", error);
-  });
-  let isShuttingDown = false;
-  process.on("SIGINT", async () => {
-    if (isShuttingDown) {
-      console.log("[TelegramRemote] Force exit...");
-      process.exit(1);
-    }
-    isShuttingDown = true;
-    console.log("[TelegramRemote] Received SIGINT, stopping bot...");
-    try {
-      await bot.stop();
-      console.log("[TelegramRemote] Bot stopped successfully, exiting...");
-      process.exit(0);
-    } catch (error) {
-      console.error("[TelegramRemote] Error stopping bot:", error);
-      process.exit(1);
-    }
-  });
-  process.on("SIGTERM", async () => {
-    if (isShuttingDown) {
-      console.log("[TelegramRemote] Force exit...");
-      process.exit(1);
-    }
-    isShuttingDown = true;
-    console.log("[TelegramRemote] Received SIGTERM, stopping bot...");
-    try {
-      await bot.stop();
-      console.log("[TelegramRemote] Bot stopped successfully, exiting...");
-      process.exit(0);
-    } catch (error) {
-      console.error("[TelegramRemote] Error stopping bot:", error);
-      process.exit(1);
-    }
-  });
-  console.log("[TelegramRemote] Plugin initialization complete, returning event handler");
-  const eventContext = {
-    client,
-    bot,
-    sessionTitleService,
-    config
-  };
-  const eventHandlers = {
-    "session.updated": handleSessionUpdated,
-    "session.status": handleSessionStatus,
-    "question.asked": handleQuestionAsked
-  };
-  return {
-    event: async ({ event }) => {
-      const handler = eventHandlers[event.type];
-      if (handler) {
-        await handler(event, eventContext);
-      }
-    }
-  };
-};
+});
 export {
-  TelegramRemote
+  telegram_remote_default as default
 };

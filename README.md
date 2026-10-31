@@ -1,5 +1,7 @@
 # OpenCode Telegram Notification Plugin
 
+> This is a fork of [Tommertom/opencoder-telegram-plugin](https://github.com/Tommertom/opencoder-telegram-plugin), updated for OpenCode v2. The original project and its contributors are credited for the initial implementation.
+
 Get OpenCode notifications via Telegram.
 
 > **Disclaimer:** This project is not affiliated with, endorsed by, or sponsored by OpenCode, SST, or any of their affiliates. OpenCode is a trademark of SST.
@@ -13,8 +15,8 @@ Get OpenCode notifications via Telegram.
 
 ## Requirements
 
-- Node.js 18+
-- OpenCode CLI installed
+- Node.js 22+ and npm
+- OpenCode v2 (target SDK: 2.1.4); OpenCode v1 is not supported by this fork
 - Telegram Bot (from [@BotFather](https://t.me/BotFather))
 
 ## Installation
@@ -41,13 +43,13 @@ Get OpenCode notifications via Telegram.
 Clone and build:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/opencoder-telegram-plugin.git
+git clone https://github.com/zhenya-yadlovskij/opencoder-telegram-plugin.git
 cd opencoder-telegram-plugin/plugin
 npm install
 npm run build
 ```
 
-Create `.env` file in the plugin directory:
+Set the following environment variables in the environment that starts the OpenCode server. Alternatively, create a `.env` file in the server's working directory (the directory where OpenCode is started):
 
 ```bash
 TELEGRAM_BOT_TOKEN=your_bot_token_here
@@ -58,37 +60,15 @@ TELEGRAM_ALLOWED_USER_IDS=123456789,987654321
 
 ### 5. Install in OpenCode
 
-Add to your `~/.config/opencode/opencode.json`:
+Add the absolute path of the **plugin directory** to `~/.config/opencode/opencode.json` (replace the example path with your checkout):
 
 ```json
 {
-  "plugins": [
-    {
-      "name": "telegram-notification",
-      "path": "/path/to/opencoder-telegram-plugin/plugin/dist/telegram-remote.js"
-    }
-  ]
+  "plugins": ["/absolute/path/to/opencoder-telegram-plugin/plugin"]
 }
 ```
 
-Or copy the built file:
-
-```bash
-cp dist/telegram-remote.js ~/.config/opencode/plugin/
-```
-
-Then reference it:
-
-```json
-{
-  "plugins": [
-    {
-      "name": "telegram-notification",
-      "path": "~/.config/opencode/plugin/telegram-remote.js"
-    }
-  ]
-}
-```
+Start or restart OpenCode from the directory containing your `.env`, or export the variables before starting its server. OpenCode v2 loads directory packages; do not point the configuration at the JavaScript file.
 
 ## Usage
 
@@ -108,7 +88,7 @@ The plugin automatically sends notifications to your Telegram chat when:
   Agent has finished: [Session Title]
   ```
 
-- **Questions asked**: When OpenCode needs clarification, you'll receive:
+- **Questions asked**: When OpenCode creates a form requesting input, you'll receive:
   ```
   📋 [Session Title]
   
@@ -150,19 +130,6 @@ You can get your chat_id by messaging the bot once, or using [@userinfobot](http
 | `TELEGRAM_BOT_TOKEN` | ✅ | Bot token from @BotFather | `123456:ABC-DEF...` |
 | `TELEGRAM_ALLOWED_USER_IDS` | ✅ | Comma-separated user IDs | `123456789,987654321` |
 | `TELEGRAM_CHAT_ID` | ❌ | Optional pre-configured chat ID | `123456789` |
-
-### OpenCode Plugin Configuration
-
-```json
-{
-  "plugins": [
-    {
-      "name": "telegram-notification",
-      "path": "/absolute/path/to/telegram-remote.js"
-    }
-  ]
-}
-```
 
 ## Troubleshooting
 
@@ -216,13 +183,14 @@ cd plugin
 npm run build      # Production build
 npm run dev        # Watch mode
 npm run typecheck  # Type checking only
+npm test           # Event-handling tests
 ```
 
 ### Testing Locally
 
 1. Build the plugin
 2. Configure `.env` with test bot credentials
-3. Point OpenCode to the built file
+3. Point OpenCode to the plugin directory
 4. Start OpenCode and message the bot to establish connection
 5. Trigger OpenCode tasks to test notifications
 

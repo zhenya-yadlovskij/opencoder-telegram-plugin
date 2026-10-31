@@ -1,7 +1,6 @@
 import { Bot, type Context } from "grammy";
 import type { Config } from "./config.js";
 import type { SessionTitleService } from "./services/session-title-service.js";
-import type { OpencodeClient } from "./events/types.js";
 
 export interface TelegramBotManager {
   start(): Promise<void>;
@@ -11,8 +10,6 @@ export interface TelegramBotManager {
   deleteMessage(messageId: number): Promise<void>;
 }
 
-let botInstance: Bot | null = null;
-
 function isUserAllowed(ctx: Context, allowedUserIds: number[]): boolean {
   const userId = ctx.from?.id;
   if (!userId) return false;
@@ -21,20 +18,11 @@ function isUserAllowed(ctx: Context, allowedUserIds: number[]): boolean {
 
 export function createTelegramBot(
   config: Config,
-  client: OpencodeClient,
   sessionTitleService: SessionTitleService,
 ): TelegramBotManager {
   console.log("[Bot] createTelegramBot called");
 
-  if (botInstance) {
-    console.log("[Bot] Reusing existing bot instance");
-    return createBotManager(botInstance, sessionTitleService);
-  }
-
-  console.log("[Bot] Creating new Bot instance with token");
   const bot = new Bot(config.botToken);
-  botInstance = bot;
-  console.log("[Bot] Bot instance created");
 
   console.log("[Bot] Setting up middleware and handlers...");
   bot.use(async (ctx, next) => {
@@ -115,7 +103,6 @@ function createBotManager(
     async stop() {
       console.log("[Bot] stop() called");
       await bot.stop();
-      botInstance = null;
       console.log("[Bot] Bot stopped and instance cleared");
     },
 

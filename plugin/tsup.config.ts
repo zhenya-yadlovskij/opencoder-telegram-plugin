@@ -5,11 +5,5 @@ export default defineConfig({
   format: ["esm"],
   dts: true,
   clean: true,
-  banner: {
-    js: `/**
- * OpenCoder Telegram Remote Plugin
- * https://github.com/YOUR_USERNAME/opencoder-telegram-remote-plugin
- */`,
-  },
-  onSuccess: "node scripts/copy-build.js",
+  external: ["@opencode/plugin", "grammy", "dotenv"],
 });
