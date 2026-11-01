@@ -16,7 +16,7 @@ Get OpenCode notifications via Telegram.
 ## Requirements
 
 - Node.js 22+ and npm
-- OpenCode v2 (target SDK: 2.1.4); OpenCode v1 is not supported by this fork
+- OpenCode v2 (plugin loading checked with OpenCode 2.1.4 and 2.2.5; target SDK: 2.2.5); OpenCode v1 is not supported by this fork
 - Telegram Bot (from [@BotFather](https://t.me/BotFather))
 
 ## Installation

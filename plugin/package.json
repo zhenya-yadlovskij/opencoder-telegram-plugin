@@ -11,8 +11,8 @@
     "test": "tsx --test test/*.test.ts"
   },
   "dependencies": {
-    "@opencode/client": "^2.1.4",
-    "@opencode/plugin": "^2.1.4",
+    "@opencode/client": "^2.2.5",
+    "@opencode/plugin": "^2.2.5",
     "dotenv": "^16.4.7",
     "grammy": "^1.34.0"
   },
@@ -26,6 +26,7 @@
     ".": "./dist/telegram-remote.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "index.js"
   ]
 }
